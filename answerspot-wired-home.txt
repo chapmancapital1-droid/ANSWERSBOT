@@ -1,0 +1,188 @@
+// apps/web/app/businesses/[id]/page.tsx
+//
+// Production Home dashboard, wired to the NestJS API. Unlike the mockups, this
+// handles the full lifecycle: auth header, loading, empty (pre-first-scan),
+// error, and success. Server Component fetches; client island for interactivity.
+//
+// Endpoints (DESIGN_SPEC §6):
+//   GET /businesses/:id
+//   GET /businesses/:id/visibility-score  -> { current, trend }
+//   GET /businesses/:id/recommendations
+//   GET /businesses/:id/competitors
+
+import { cookies } from "next/headers";
+import { notFound } from "next/navigation";
+import { Suspense } from "react";
+import { RecommendationList } from "./recommendation-list"; // client island (below)
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+
+// ── Types (import from packages/shared-types in the real repo) ──
+type VisibilityScore = {
+  score: number;
+  breakdown: {
+    appearanceRate: number;
+    rankScore: number;
+    sentimentScore: number;
+    citationScore: number;
+    weights: Record<string, number>;
+  };
+  computedAt: string;
+};
+type ScoreResponse = { current: VisibilityScore | null; trend: { score: number; computedAt: string }[] };
+type Business = { id: string; name: string; category: string; city: string; state: string };
+type Recommendation = {
+  id: string; type: string; severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  title: string; message: string; artifact: { kind: string; content: string } | null;
+};
+
+// ── Fetch helper: injects auth, throws typed errors ──
+async function apiGet<T>(path: string): Promise<T> {
+  const token = cookies().get("session")?.value;
+  const res = await fetch(`${API}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    cache: "no-store", // dashboard is always fresh
+  });
+  if (res.status === 404) notFound();
+  if (res.status === 401) throw new ApiError("unauthorized", 401);
+  if (!res.ok) throw new ApiError(`Request failed: ${res.status}`, res.status);
+  return res.json() as Promise<T>;
+}
+
+class ApiError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
+}
+
+function scoreColor(s: number) {
+  if (s >= 70) return "text-green-600";
+  if (s >= 50) return "text-amber-600";
+  return "text-red-600";
+}
+
+// ── Empty state: business exists but no scan has completed yet ──
+function AwaitingFirstScan({ business }: { business: Business }) {
+  return (
+    <div className="max-w-md mx-auto text-center py-20">
+      <div className="w-14 h-14 rounded-2xl bg-blue-100 mx-auto mb-4 flex items-center justify-center">
+        <span className="text-2xl">📡</span>
+      </div>
+      <h2 className="text-xl font-bold text-slate-800">Your first scan is running</h2>
+      <p className="text-sm text-slate-500 mt-2">
+        We&apos;re querying the AI platforms for {business.name}. This page will populate as soon
+        as results come in — usually within a minute.
+      </p>
+    </div>
+  );
+}
+
+// ── Error state ──
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div className="max-w-md mx-auto text-center py-20">
+      <h2 className="text-xl font-bold text-slate-800">Something went wrong</h2>
+      <p className="text-sm text-slate-500 mt-2">{message}</p>
+      <p className="text-xs text-slate-400 mt-4">Try refreshing. If it persists, contact support.</p>
+    </div>
+  );
+}
+
+// ── Score panels (Server Component; no interactivity needed) ──
+function ScorePanel({ score }: { score: VisibilityScore }) {
+  const b = score.breakdown;
+  const rows: [string, number, string][] = [
+    ["Appearance rate", b.appearanceRate, "how often you show up"],
+    ["Avg rank position", b.rankScore, "where you land when you do"],
+    ["Sentiment", b.sentimentScore, "how you're described"],
+    ["Citation strength", b.citationScore, "which sources back you"],
+  ];
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col items-center justify-center">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide self-start mb-3">
+          Visibility Score
+        </h2>
+        <span className={`text-6xl font-bold ${scoreColor(score.score)}`}>{score.score}</span>
+        <span className="text-xs text-slate-400 mt-1">out of 100</span>
+      </div>
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 lg:col-span-2">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
+          What drives your score
+        </h2>
+        <div className="space-y-3.5">
+          {rows.map(([label, val, hint]) => (
+            <div key={label}>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-slate-600 font-medium">{label}</span>
+                <span className="text-slate-400">{hint}</span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full rounded-full bg-slate-700" style={{ width: `${Math.round(val * 100)}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Page (Server Component) ──
+export default async function BusinessHomePage({ params }: { params: { id: string } }) {
+  let business: Business;
+  let scoreRes: ScoreResponse;
+  let recommendations: Recommendation[];
+
+  try {
+    // Parallel fetch — independent endpoints.
+    [business, scoreRes, recommendations] = await Promise.all([
+      apiGet<Business>(`/businesses/${params.id}`),
+      apiGet<ScoreResponse>(`/businesses/${params.id}/visibility-score`),
+      apiGet<Recommendation[]>(`/businesses/${params.id}/recommendations`),
+    ]);
+  } catch (e) {
+    const msg = e instanceof ApiError && e.status === 401
+      ? "Your session expired. Please sign in again."
+      : "We couldn't load this dashboard.";
+    return <Shell><ErrorState message={msg} /></Shell>;
+  }
+
+  // Empty state: onboarded but first scan hasn't produced a score yet.
+  if (!scoreRes.current) {
+    return <Shell><AwaitingFirstScan business={business} /></Shell>;
+  }
+
+  return (
+    <Shell>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-800">{business.name}</h1>
+        <p className="text-sm text-slate-500">
+          {business.category} · {business.city}, {business.state} · Last scan{" "}
+          {new Date(scoreRes.current.computedAt).toLocaleDateString()}
+        </p>
+      </div>
+
+      <div className="mb-4">
+        <ScorePanel score={scoreRes.current} />
+      </div>
+
+      {/* Interactive part is a client island — keeps the rest server-rendered. */}
+      <Suspense fallback={<div className="text-sm text-slate-400">Loading recommendations…</div>}>
+        <RecommendationList recommendations={recommendations} />
+      </Suspense>
+
+      <p className="text-[11px] text-slate-400 mt-4 text-center max-w-2xl mx-auto">
+        Scores are directional estimates based on sampled AI responses and may vary between scans.
+      </p>
+    </Shell>
+  );
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="max-w-5xl mx-auto">{children}</div>
+    </div>
+  );
+}
