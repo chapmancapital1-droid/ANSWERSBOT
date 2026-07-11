@@ -9,6 +9,42 @@ export const PLAN_MONTHLY_SCAN_JOB_LIMITS: Record<string, number | null> = {
   AGENCY: null,
 };
 
+/** Team seats (memberships). null = unlimited. */
+export const PLAN_SEAT_LIMITS: Record<string, number | null> = {
+  STARTER: 1,
+  PRO: 3,
+  AGENCY: 25,
+};
+
+/** Estimated USD per live platform call (budget accounting). */
+export const LIVE_CALL_COST_USD: Record<string, number> = {
+  PERPLEXITY: 0.005,
+  CHATGPT: 0.002,
+  GEMINI: 0.001,
+  AI_OVERVIEW: 0.015, // SerpAPI
+  DEFAULT: 0.003,
+};
+
+export function seatLimitExceeded(
+  usedSeats: number,
+  limit: number | null,
+): boolean {
+  if (limit == null) return false;
+  return usedSeats >= limit;
+}
+
+export function budgetExceeded(
+  spentUsd: number,
+  budgetUsd: number | null,
+): boolean {
+  if (budgetUsd == null || budgetUsd <= 0) return false;
+  return spentUsd >= budgetUsd;
+}
+
+export function estimateLiveCallCost(platformKey: string): number {
+  return LIVE_CALL_COST_USD[platformKey] ?? LIVE_CALL_COST_USD.DEFAULT;
+}
+
 export type SubStatus = 'ACTIVE' | 'TRIALING' | 'PAST_DUE' | 'CANCELED' | 'INCOMPLETE';
 
 export function orgHasPaidAccess(org: {

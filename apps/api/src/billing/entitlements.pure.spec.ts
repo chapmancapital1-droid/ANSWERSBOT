@@ -5,6 +5,10 @@ import {
   freeTierBlocksRescan,
   monthlyQuotaExceeded,
   monthlyScanJobLimit,
+  seatLimitExceeded,
+  budgetExceeded,
+  estimateLiveCallCost,
+  PLAN_SEAT_LIMITS,
 } from './entitlements.pure';
 
 describe('orgHasPaidAccess', () => {
@@ -66,5 +70,27 @@ describe('monthly scan job quota', () => {
     expect(monthlyQuotaExceeded(100, 100)).toBe(true);
     expect(monthlyQuotaExceeded(99, 100)).toBe(false);
     expect(monthlyQuotaExceeded(999, null)).toBe(false);
+  });
+});
+
+describe('agency seats', () => {
+  it('limits seats by plan', () => {
+    expect(PLAN_SEAT_LIMITS.STARTER).toBe(1);
+    expect(PLAN_SEAT_LIMITS.PRO).toBe(3);
+    expect(PLAN_SEAT_LIMITS.AGENCY).toBe(25);
+    expect(seatLimitExceeded(1, 1)).toBe(true);
+    expect(seatLimitExceeded(2, 3)).toBe(false);
+    expect(seatLimitExceeded(100, null)).toBe(false);
+  });
+});
+
+describe('budget', () => {
+  it('tracks SERP costs higher than chat', () => {
+    expect(estimateLiveCallCost('AI_OVERVIEW')).toBeGreaterThan(
+      estimateLiveCallCost('CHATGPT'),
+    );
+    expect(budgetExceeded(500, 500)).toBe(true);
+    expect(budgetExceeded(100, 500)).toBe(false);
+    expect(budgetExceeded(9999, null)).toBe(false);
   });
 });

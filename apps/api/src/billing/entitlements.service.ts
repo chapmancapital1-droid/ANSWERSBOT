@@ -9,20 +9,25 @@ import {
   monthlyScanJobLimit,
   orgHasPaidAccess,
   PLAN_MONTHLY_SCAN_JOB_LIMITS,
+  PLAN_SEAT_LIMITS,
 } from './entitlements.pure';
+import { BudgetService } from './budget.service';
 
-export { FREE_BUSINESS_LIMIT, PLAN_MONTHLY_SCAN_JOB_LIMITS };
+export { FREE_BUSINESS_LIMIT, PLAN_MONTHLY_SCAN_JOB_LIMITS, PLAN_SEAT_LIMITS };
 
 @Injectable()
 export class EntitlementsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private budget: BudgetService,
+  ) {}
 
   async getOrg(organizationId: string) {
     return this.prisma.organization.findUniqueOrThrow({
       where: { id: organizationId },
       include: {
         subscriptions: { orderBy: { updatedAt: 'desc' }, take: 3 },
-        _count: { select: { businesses: true } },
+        _count: { select: { businesses: true, memberships: true } },
       },
     });
   }
@@ -105,17 +110,28 @@ export class EntitlementsService {
       ? await this.scanJobsThisMonth(organizationId)
       : 0;
 
+    const budget = await this.budget.getMeter(organizationId);
+    const seatLimit = PLAN_SEAT_LIMITS[org.plan] ?? 1;
+
     return {
       plan: org.plan,
       status: org.status,
       paid,
       freeBusinessLimit: FREE_BUSINESS_LIMIT,
       businessCount: org._count.businesses,
+      seats: {
+        used: org._count.memberships,
+        limit: seatLimit,
+      },
       usage: {
         scanJobsThisMonth: jobsThisMonth,
         monthlyScanJobLimit: paid ? monthlyLimit : null,
+        budget,
       },
-      limits: PLAN_MONTHLY_SCAN_JOB_LIMITS,
+      limits: {
+        scanJobs: PLAN_MONTHLY_SCAN_JOB_LIMITS,
+        seats: PLAN_SEAT_LIMITS,
+      },
       subscription:
         org.subscriptions.find((s) =>
           ['ACTIVE', 'TRIALING'].includes(s.status),

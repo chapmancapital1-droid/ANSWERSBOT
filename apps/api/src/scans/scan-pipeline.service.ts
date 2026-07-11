@@ -8,6 +8,7 @@ import {
   platformCapabilities,
 } from './platform-clients';
 import { AlertsService } from '../alerts/alerts.service';
+import { BudgetService } from '../billing/budget.service';
 
 /**
  * M2 in-process scan pipeline (no Celery required for local MVP).
@@ -20,6 +21,7 @@ export class ScanPipelineService {
   constructor(
     private prisma: PrismaService,
     private alerts: AlertsService,
+    private budget: BudgetService,
   ) {}
 
   async runForBusiness(businessId: string, opts?: { platformKeys?: string[] }) {
@@ -32,6 +34,7 @@ export class ScanPipelineService {
       return { businessId, scans: 0, message: 'No active queries' };
     }
 
+    // Monthly live-API / SERP budget: over-budget batches force stub (no hard fail)
     const includeAiOverview = aiOverviewEnabled();
     const platforms = await this.prisma.platform.findMany({
       where: {
@@ -52,12 +55,17 @@ export class ScanPipelineService {
     let created = 0;
     let live = 0;
     let stub = 0;
+    const liveLedger: { platformKey: string; source: 'live' | 'stub' }[] = [];
 
     // Optional throttle for live APIs (ms between calls)
     const delayMs = Number(process.env.SCAN_LIVE_DELAY_MS || 400);
 
     for (const q of business.trackedQueries) {
       for (const platform of platforms) {
+        // Soft-stop new live calls once budget is blown mid-batch
+        const meter = await this.budget.getMeter(business.organizationId);
+        const forceStub = meter.exceeded;
+
         const scan = await this.prisma.scan.create({
           data: {
             trackedQueryId: q.id,
@@ -75,10 +83,13 @@ export class ScanPipelineService {
             category: business.category,
             city: business.city,
             location: q.location,
+            forceStub,
           });
 
-          if (answer.source === 'live') live++;
+          const source = answer.source;
+          if (source === 'live') live++;
           else stub++;
+          liveLedger.push({ platformKey: platform.key, source });
 
           await this.prisma.scanResult.create({
             data: {
@@ -98,7 +109,7 @@ export class ScanPipelineService {
           });
           created++;
 
-          if (answer.source === 'live' && delayMs > 0) {
+          if (source === 'live' && delayMs > 0) {
             await new Promise((r) => setTimeout(r, delayMs));
           }
         } catch (err: any) {
@@ -110,6 +121,11 @@ export class ScanPipelineService {
         }
       }
     }
+
+    const budgetAfter = await this.budget.recordLiveCalls(
+      business.organizationId,
+      liveLedger,
+    );
 
     const insights = await this.recomputeInsights(businessId);
     let alertResult: { alerts: number; types?: string[] } = { alerts: 0 };
@@ -132,6 +148,7 @@ export class ScanPipelineService {
       score: insights.score,
       recommendations: insights.recommendationCount,
       alerts: alertResult,
+      budget: budgetAfter,
     };
   }
 

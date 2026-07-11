@@ -36,7 +36,17 @@
 | Stripe `trial_will_end` email | Done |
 | PDF/HTML reports + MinIO/local storage | Done |
 
-**Next (P3):** production IdP (Clerk), agency multi-seat, structured logging/Sentry, SERP budget caps.
+**P3 (2026-07-11):**
+
+| Item | Status |
+|------|--------|
+| Clerk / Auth.js token exchange → app JWT | Done (ADR-0001) |
+| Agency multi-seat invites + seat limits | Done |
+| `x-request-id` + global exception filter | Done |
+| Optional Sentry (`SENTRY_DSN`) | Done |
+| SERP/live monthly budget meter | Done |
+
+**Next (P4):** production deploy (Docker/K8s), Clerk UI on web login, email polish, agency white-label report branding.
 
 ---
 

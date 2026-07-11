@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaService } from './prisma/prisma.service';
 import { HealthModule } from './health/health.module';
@@ -9,6 +9,8 @@ import { ScansModule } from './scans/scans.module';
 import { ReportsModule } from './reports/reports.module';
 import { BillingModule } from './billing/billing.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { OrgModule } from './org/org.module';
+import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 
 @Module({
   imports: [
@@ -21,9 +23,14 @@ import { AlertsModule } from './alerts/alerts.module';
     ReportsModule,
     BillingModule,
     AlertsModule,
+    OrgModule,
   ],
   providers: [PrismaService],
   exports: [PrismaService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestIdMiddleware).forRoutes('*');
+  }
+}
 

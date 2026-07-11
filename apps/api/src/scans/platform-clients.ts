@@ -189,10 +189,13 @@ export async function fetchPlatformAnswer(opts: {
   category: string;
   city: string;
   location?: string | null;
+  /** Force stub path (budget exhaustion mid-batch). */
+  forceStub?: boolean;
 }): Promise<PlatformAnswer> {
   const mode = scanMode();
   const caps = platformCapabilities();
-  const wantLive = mode === 'live' || mode === 'auto';
+  const wantLive =
+    !opts.forceStub && (mode === 'live' || mode === 'auto');
 
   const toAnswer = (
     text: string,

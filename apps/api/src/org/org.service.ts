@@ -1,0 +1,246 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { randomBytes } from 'crypto';
+import { PrismaService } from '../prisma/prisma.service';
+import {
+  PLAN_SEAT_LIMITS,
+  seatLimitExceeded,
+} from '../billing/entitlements.pure';
+import { sendAlertEmail } from '../alerts/mailer';
+
+@Injectable()
+export class OrgService {
+  constructor(private prisma: PrismaService) {}
+
+  async listMembers(organizationId: string) {
+    const members = await this.prisma.membership.findMany({
+      where: { organizationId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            createdAt: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const invites = await this.prisma.orgInvite.findMany({
+      where: { organizationId, acceptedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+    const org = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+    });
+    const limit = PLAN_SEAT_LIMITS[org.plan] ?? 1;
+    return {
+      plan: org.plan,
+      seatLimit: limit,
+      seatUsed: members.length,
+      members: members.map((m) => ({
+        membershipId: m.id,
+        userId: m.user.id,
+        email: m.user.email,
+        name: m.user.name,
+        role: m.role,
+        joinedAt: m.createdAt,
+      })),
+      pendingInvites: invites.map((i) => ({
+        id: i.id,
+        email: i.email,
+        role: i.role,
+        expiresAt: i.expiresAt,
+      })),
+    };
+  }
+
+  async invite(
+    organizationId: string,
+    actor: { id: string; role: string; email: string },
+    body: { email: string; role?: 'ADMIN' | 'MEMBER' },
+  ) {
+    if (!['OWNER', 'ADMIN'].includes(actor.role)) {
+      throw new ForbiddenException('Only OWNER/ADMIN can invite');
+    }
+    const email = body.email.toLowerCase().trim();
+    if (!email.includes('@')) throw new BadRequestException('Invalid email');
+
+    const role = body.role === 'ADMIN' ? 'ADMIN' : 'MEMBER';
+    if (role === 'ADMIN' && actor.role !== 'OWNER') {
+      throw new ForbiddenException('Only OWNER can invite admins');
+    }
+
+    const org = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+    });
+    const memberCount = await this.prisma.membership.count({
+      where: { organizationId },
+    });
+    const pending = await this.prisma.orgInvite.count({
+      where: { organizationId, acceptedAt: null, expiresAt: { gt: new Date() } },
+    });
+    const limit = PLAN_SEAT_LIMITS[org.plan] ?? 1;
+    if (seatLimitExceeded(memberCount + pending, limit)) {
+      throw new ForbiddenException({
+        code: 'SEAT_LIMIT',
+        message: `${org.plan} plan allows ${limit === null ? 'unlimited' : limit} seats. Upgrade to Agency for multi-seat.`,
+        upgradeRequired: true,
+        seatLimit: limit,
+        seatUsed: memberCount,
+      });
+    }
+
+    const existingMember = await this.prisma.membership.findFirst({
+      where: { organizationId, user: { email } },
+    });
+    if (existingMember) {
+      throw new BadRequestException('User is already a member');
+    }
+
+    const token = randomBytes(24).toString('hex');
+    const invite = await this.prisma.orgInvite.create({
+      data: {
+        organizationId,
+        email,
+        role,
+        token,
+        invitedById: actor.id,
+        expiresAt: new Date(Date.now() + 7 * 864e5),
+      },
+    });
+
+    const base =
+      process.env.WEB_ORIGIN?.split(',')[0] ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      'http://localhost:3001';
+    const acceptUrl = `${base}/login?invite=${token}`;
+
+    await sendAlertEmail({
+      to: email,
+      subject: `You're invited to ${org.name} on Answerspot`,
+      text: [
+        `You've been invited to join ${org.name} as ${role}.`,
+        ``,
+        `Accept: ${acceptUrl}`,
+        `Or sign in with your IdP using this email — the invite auto-applies.`,
+        ``,
+        `Invite code: ${token}`,
+        `Expires: ${invite.expiresAt.toISOString()}`,
+      ].join('\n'),
+    });
+
+    return {
+      id: invite.id,
+      email: invite.email,
+      role: invite.role,
+      expiresAt: invite.expiresAt,
+      acceptUrl,
+      token: process.env.NODE_ENV === 'production' ? undefined : token,
+    };
+  }
+
+  async acceptInvite(userId: string, email: string, token: string) {
+    const invite = await this.prisma.orgInvite.findUnique({
+      where: { token },
+    });
+    if (!invite || invite.acceptedAt) {
+      throw new NotFoundException('Invite not found');
+    }
+    if (invite.expiresAt < new Date()) {
+      throw new BadRequestException('Invite expired');
+    }
+    if (invite.email !== email.toLowerCase()) {
+      throw new ForbiddenException('Invite email does not match your account');
+    }
+
+    await this.prisma.membership.upsert({
+      where: {
+        userId_organizationId: {
+          userId,
+          organizationId: invite.organizationId,
+        },
+      },
+      update: { role: invite.role },
+      create: {
+        userId,
+        organizationId: invite.organizationId,
+        role: invite.role,
+      },
+    });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        organizationId: invite.organizationId,
+        role: invite.role,
+      },
+    });
+    await this.prisma.orgInvite.update({
+      where: { id: invite.id },
+      data: { acceptedAt: new Date() },
+    });
+
+    return {
+      organizationId: invite.organizationId,
+      role: invite.role,
+      accepted: true,
+    };
+  }
+
+  async removeMember(
+    organizationId: string,
+    actorRole: string,
+    targetUserId: string,
+    actorUserId: string,
+  ) {
+    if (!['OWNER', 'ADMIN'].includes(actorRole)) {
+      throw new ForbiddenException('Only OWNER/ADMIN can remove members');
+    }
+    if (targetUserId === actorUserId) {
+      throw new BadRequestException('Cannot remove yourself');
+    }
+    const target = await this.prisma.membership.findUnique({
+      where: {
+        userId_organizationId: {
+          userId: targetUserId,
+          organizationId,
+        },
+      },
+    });
+    if (!target) throw new NotFoundException('Member not found');
+    if (target.role === 'OWNER') {
+      throw new ForbiddenException('Cannot remove the OWNER');
+    }
+    if (target.role === 'ADMIN' && actorRole !== 'OWNER') {
+      throw new ForbiddenException('Only OWNER can remove admins');
+    }
+    await this.prisma.membership.delete({
+      where: { id: target.id },
+    });
+    // If user's active org was this one, leave them but they need another membership
+    const user = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+    if (user?.organizationId === organizationId) {
+      const other = await this.prisma.membership.findFirst({
+        where: { userId: targetUserId },
+      });
+      if (other) {
+        await this.prisma.user.update({
+          where: { id: targetUserId },
+          data: {
+            organizationId: other.organizationId,
+            role: other.role,
+          },
+        });
+      }
+    }
+    return { removed: true };
+  }
+}
