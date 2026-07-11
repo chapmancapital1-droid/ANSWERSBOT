@@ -5,6 +5,7 @@
 export function buildSimplePdf(opts: {
   title: string;
   lines: string[];
+  brandLine?: string;
 }): Buffer {
   const escape = (s: string) =>
     s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
@@ -12,8 +13,17 @@ export function buildSimplePdf(opts: {
   const contentLines: string[] = [];
   let y = 760;
   contentLines.push('BT');
+  if (opts.brandLine) {
+    contentLines.push('/F1 10 Tf');
+    contentLines.push(`50 ${y} Td`);
+    contentLines.push(`(${escape(opts.brandLine.slice(0, 60))}) Tj`);
+    contentLines.push('0 -18 Td');
+    y -= 18;
+  }
   contentLines.push('/F1 16 Tf');
-  contentLines.push(`50 ${y} Td`);
+  if (!opts.brandLine) {
+    contentLines.push(`50 ${y} Td`);
+  }
   contentLines.push(`(${escape(opts.title.slice(0, 80))}) Tj`);
   contentLines.push('/F1 10 Tf');
   contentLines.push('0 -24 Td');

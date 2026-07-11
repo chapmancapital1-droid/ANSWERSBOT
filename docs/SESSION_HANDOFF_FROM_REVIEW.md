@@ -46,7 +46,18 @@
 | Optional Sentry (`SENTRY_DSN`) | Done |
 | SERP/live monthly budget meter | Done |
 
-**Next (P4):** production deploy (Docker/K8s), Clerk UI on web login, email polish, agency white-label report branding.
+**P4 (2026-07-11):**
+
+| Item | Status |
+|------|--------|
+| `docker-compose.prod.yml` + migrate-on-boot entrypoint | Done |
+| Hardened Dockerfiles + healthchecks | Done |
+| `docs/DEPLOY.md` | Done |
+| Login: Clerk SDK + IdP JWT exchange + invite handoff | Done |
+| `/invite` accept page + `/team` seats & branding | Done |
+| White-label PDF/HTML reports (Pro/Agency) | Done |
+
+**Next (P5):** K8s/Helm values, CDN report URLs, full Clerk hosted UI package, e2e Playwright smoke.
 
 ---
 

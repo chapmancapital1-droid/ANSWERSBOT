@@ -60,6 +60,18 @@ docker compose exec api npx prisma migrate deploy --schema apps/api/prisma/schem
 docker compose exec api node apps/api/prisma/seed.js
 ```
 
+### Production compose
+
+See **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+
+```powershell
+copy .env.example .env.prod
+# set JWT_SECRET, ALLOW_DEV_AUTH=false, Clerk/Stripe keys
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
+API image runs migrations on boot (`RUN_MIGRATIONS=true`).
+
 ## Repo layout
 
 ```
@@ -87,7 +99,9 @@ docs/             Design PDFs + generated DESIGN_SPEC pointer
 ## Engineering notes
 
 - **Tenant isolation:** JWT carries `organizationId`; `OrgScopeGuard` enforces business ownership.
-- **AI Overview:** blocked (ADR-0004) until legal review — do not implement in M0–M4.
+- **AI Overview:** gated by `ENABLE_AI_OVERVIEW=true` + SerpAPI (experimental).
+- **IdP:** Clerk / Auth.js exchange documented in `docs/ADR-0001-auth-idp.md`.
+- **White-label reports:** Pro/Agency branding via `/team` → `GET/PATCH /org/branding`.
 - **Prisma owns migrations.** Python workers read via SQLAlchemy; they must not migrate.
 - **Visibility score weights** are snapshotted inside each score row (ADR-0005).
 - Design handoff PDFs remain in repo root; runtime code is under `apps/`.

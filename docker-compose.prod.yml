@@ -1,0 +1,116 @@
+# Production-oriented compose. Use with a real .env (never commit secrets).
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+name: answerspot-prod
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.example.com/api/v1}
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+    ports: ["3000:3000"]
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.example.com/api/v1}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    ports: ["4000:4000"]
+    env_file: ${ENV_FILE:-.env}
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: ${DATABASE_URL:-postgres://answerspot:answerspot@postgres:5432/answerspot}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      ALLOW_DEV_AUTH: ${ALLOW_DEV_AUTH:-false}
+      ALLOW_MOCK_BILLING: "false"
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      RUN_SEED: ${RUN_SEED:-false}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/api/v1/health/ready"]
+      interval: 20s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/worker.Dockerfile
+    env_file: ${ENV_FILE:-.env}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://answerspot:answerspot@postgres:5432/answerspot}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    command: celery -A answerspot_workers.celery_app worker -Q runner,celery --loglevel=info --concurrency=4
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: infra/docker/worker.Dockerfile
+    env_file: ${ENV_FILE:-.env}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://answerspot:answerspot@postgres:5432/answerspot}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+    depends_on: [redis]
+    restart: unless-stopped
+    command: celery -A answerspot_workers.celery_app beat --loglevel=info
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-answerspot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-answerspot}
+      POSTGRES_DB: ${POSTGRES_DB:-answerspot}
+    volumes: [pgdata_prod:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    # Do not publish DB ports in prod by default
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata_prod:/data]
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: ${S3_KEY:-answerspot}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET:-answerspot123}
+    command: server /data --console-address ":9001"
+    volumes: [miniodata_prod:/data]
+    restart: unless-stopped
+
+volumes:
+  pgdata_prod:
+  redisdata_prod:
+  miniodata_prod:

@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { RecommendationList, type Recommendation } from './recommendation-list';
 import { RescanButton } from './rescan-button';
+import { ReportButton } from './report-button';
 import { AlertsPanel } from '@/components/alerts-panel';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
@@ -122,6 +123,7 @@ export default async function BusinessHomePage({ params }: { params: { id: strin
             Competitor Radar
           </Link>
           <RescanButton businessId={id} />
+          <ReportButton businessId={id} />
         </div>
       </div>
 

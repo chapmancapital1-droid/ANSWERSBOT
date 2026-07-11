@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -18,6 +19,25 @@ import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorat
 @Controller('org')
 export class OrgController {
   constructor(private readonly org: OrgService) {}
+
+  @Get('branding')
+  branding(@CurrentUser() u: AuthUser) {
+    return this.org.getBranding(u.organizationId);
+  }
+
+  @Patch('branding')
+  updateBranding(
+    @CurrentUser() u: AuthUser,
+    @Body()
+    body: {
+      brandName?: string | null;
+      brandPrimaryColor?: string | null;
+      brandLogoUrl?: string | null;
+      brandFooter?: string | null;
+    },
+  ) {
+    return this.org.updateBranding(u.organizationId, u.role, body);
+  }
 
   @Get('members')
   members(@CurrentUser() u: AuthUser) {

@@ -90,6 +90,11 @@ model Organization {
   plan Plan @default(STARTER)
   status OrgStatus @default(TRIALING)
   stripeCustomerId String? @unique
+  // Agency white-label branding (P4)
+  brandName String?
+  brandPrimaryColor String? // #RRGGBB
+  brandLogoUrl String?
+  brandFooter String?
   users User[]
   memberships Membership[]
   businesses Business[]
