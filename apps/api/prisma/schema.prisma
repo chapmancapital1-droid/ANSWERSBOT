@@ -1,0 +1,258 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  STARTER
+  PRO
+  AGENCY
+}
+enum OrgStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+}
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+enum PlatformKey {
+  CHATGPT
+  PERPLEXITY
+  GEMINI
+  AI_OVERVIEW
+}
+enum ScanStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+  UNKNOWN
+}
+enum RecommendationType {
+  KEYWORD_GAP
+  SCHEMA_MARKUP
+  REVIEW_SIGNAL
+  CITATION_GAP
+  SENTIMENT_ISSUE
+  COMPETITOR_OVERTAKE
+}
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+enum RecommendationStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+enum AlertType {
+  SCORE_DROP
+  COMPETITOR_OVERTAKE
+  SENTIMENT_NEGATIVE
+  SCAN_FAILED
+}
+enum AlertChannel {
+  EMAIL
+  SMS
+}
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+  INCOMPLETE
+}
+
+model Organization {
+  id String @id @default(cuid())
+  name String
+  plan Plan @default(STARTER)
+  status OrgStatus @default(TRIALING)
+  stripeCustomerId String? @unique
+  users User[]
+  memberships Membership[]
+  businesses Business[]
+  subscriptions Subscription[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([status])
+  @@map("organizations")
+}
+
+model User {
+  id String @id @default(cuid())
+  organizationId String
+  email String @unique
+  name String?
+  role Role @default(MEMBER)
+  authProviderId String? @unique
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Membership {
+  id String @id @default(cuid())
+  userId String
+  organizationId String
+  role Role @default(MEMBER)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@map("memberships")
+}
+
+model Business {
+  id String @id @default(cuid())
+  organizationId String
+  name String
+  category String
+  city String
+  state String
+  website String?
+  gbpId String?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  trackedQueries TrackedQuery[]
+  visibilityScores VisibilityScore[]
+  recommendations Recommendation[]
+  alerts Alert[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([organizationId])
+  @@index([category, city, state])
+  @@map("businesses")
+}
+
+model Platform {
+  id String @id @default(cuid())
+  key PlatformKey @unique
+  displayName String
+  enabled Boolean @default(true)
+  scans Scan[]
+  @@map("platforms")
+}
+
+model TrackedQuery {
+  id String @id @default(cuid())
+  businessId String
+  queryText String
+  location String?
+  intent String?
+  isActive Boolean @default(true)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  scans Scan[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([businessId, isActive])
+  @@map("tracked_queries")
+}
+
+model Scan {
+  id String @id @default(cuid())
+  trackedQueryId String
+  platformId String
+  status ScanStatus @default(QUEUED)
+  samples Int @default(3)
+  runAt DateTime?
+  error String?
+  trackedQuery TrackedQuery @relation(fields: [trackedQueryId], references: [id], onDelete: Cascade)
+  platform Platform @relation(fields: [platformId], references: [id])
+  results ScanResult[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([trackedQueryId, platformId])
+  @@index([status])
+  @@map("scans")
+}
+
+model ScanResult {
+  id String @id @default(cuid())
+  scanId String
+  rawResponse String @db.Text
+  mentioned Boolean @default(false)
+  rankPosition Int?
+  sentiment Sentiment @default(UNKNOWN)
+  confidence Decimal @default(0) @db.Decimal(4, 3)
+  citations Json @default("[]")
+  competitors Json @default("[]")
+  scan Scan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@index([scanId])
+  @@index([mentioned])
+  @@map("scan_results")
+}
+
+model VisibilityScore {
+  id String @id @default(cuid())
+  businessId String
+  score Int
+  breakdown Json
+  computedAt DateTime @default(now())
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  @@index([businessId, computedAt])
+  @@map("visibility_scores")
+}
+
+model Recommendation {
+  id String @id @default(cuid())
+  businessId String
+  type RecommendationType
+  severity Severity @default(MEDIUM)
+  title String
+  message String @db.Text
+  artifact Json?
+  status RecommendationStatus @default(OPEN)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([businessId, status])
+  @@map("recommendations")
+}
+
+model Alert {
+  id String @id @default(cuid())
+  businessId String
+  type AlertType
+  channel AlertChannel
+  payload Json
+  sentAt DateTime?
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@index([businessId, type])
+  @@map("alerts")
+}
+
+model Subscription {
+  id String @id @default(cuid())
+  organizationId String
+  stripeSubscriptionId String @unique
+  plan Plan
+  status SubscriptionStatus @default(INCOMPLETE)
+  currentPeriodEnd DateTime?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([organizationId])
+  @@map("subscriptions")
+}

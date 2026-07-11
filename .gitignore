@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.next/
+.turbo/
+coverage/
+.env
+.env.local
+*.log
+.DS_Store
+apps/api/prisma/*.db
+apps/workers/.venv/
+apps/workers/**/__pycache__/
+apps/workers/.pytest_cache/
+apps/workers/.mypy_cache/
+*.pyc
+.idea/
+.vscode/

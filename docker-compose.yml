@@ -1,0 +1,79 @@
+version: "3.9"
+name: answerspot
+
+services:
+  web:
+    build: { context: ., dockerfile: infra/docker/web.Dockerfile }
+    ports: ["3000:3000"]
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
+    depends_on: [api]
+    command: npm run dev --workspace=apps/web
+
+  api:
+    build: { context: ., dockerfile: infra/docker/api.Dockerfile }
+    ports: ["4000:4000"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://answerspot:answerspot@postgres:5432/answerspot
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      minio: { condition: service_started }
+    command: npm run start:dev --workspace=apps/api
+
+  worker:
+    build: { context: ., dockerfile: infra/docker/worker.Dockerfile }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://answerspot:answerspot@postgres:5432/answerspot
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    command: celery -A answerspot_workers worker --loglevel=info --concurrency=4
+
+  scheduler:
+    build: { context: ., dockerfile: infra/docker/worker.Dockerfile }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://answerspot:answerspot@postgres:5432/answerspot
+      CELERY_BROKER_URL: redis://redis:6379/1
+    depends_on: [redis]
+    command: celery -A answerspot_workers beat --loglevel=info
+
+  postgres:
+    image: postgres:16-alpine
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_USER: answerspot
+      POSTGRES_PASSWORD: answerspot
+      POSTGRES_DB: answerspot
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U answerspot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    volumes: [redisdata:/data]
+
+  minio:
+    image: minio/minio:latest
+    ports: ["9000:9000", "9001:9001"]
+    environment:
+      MINIO_ROOT_USER: answerspot
+      MINIO_ROOT_PASSWORD: answerspot123
+    command: server /data --console-address ":9001"
+    volumes: [miniodata:/data]
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
