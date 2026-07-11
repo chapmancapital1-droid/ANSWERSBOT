@@ -14,7 +14,7 @@ export default function HomePage() {
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <a
-            href="/login"
+            href="/onboard"
             className="rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
           >
             Start free scan

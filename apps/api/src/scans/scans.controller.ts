@@ -9,8 +9,26 @@ import { ScansService } from './scans.service';
 @Controller('scans')
 export class ScansController {
   constructor(private readonly svc: ScansService) {}
-  @Post('trigger') trigger(@Body() body: { trackedQueryId: string; platformKeys?: string[] }) {
+
+  @Post('trigger')
+  trigger(
+    @Body()
+    body: {
+      trackedQueryId?: string;
+      businessId?: string;
+      platformKeys?: string[];
+    },
+  ) {
     return this.svc.trigger(body);
   }
-  @Get(':id') get(@Param('id') id: string) { return this.svc.get(id); }
+
+  @Get('business/:businessId')
+  listForBusiness(@Param('businessId') businessId: string) {
+    return this.svc.listForBusiness(businessId);
+  }
+
+  @Get(':id')
+  get(@Param('id') id: string) {
+    return this.svc.get(id);
+  }
 }

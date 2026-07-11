@@ -32,9 +32,17 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Your businesses</h1>
-        <p className="text-sm text-slate-600">Pick a location to open the visibility dashboard.</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Your businesses</h1>
+          <p className="text-sm text-slate-600">Pick a location to open the visibility dashboard.</p>
+        </div>
+        <Link
+          href="/onboard"
+          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          + Add business
+        </Link>
       </div>
       {error && (
         <div className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">

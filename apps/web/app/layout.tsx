@@ -16,6 +16,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               Answerspot
             </a>
             <nav className="flex gap-4 text-sm text-slate-600">
+              <a href="/onboard" className="hover:text-slate-900">
+                Free scan
+              </a>
               <a href="/login" className="hover:text-slate-900">
                 Login
               </a>
