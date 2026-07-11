@@ -34,6 +34,12 @@ enum ScanStatus {
   DONE
   FAILED
 }
+enum ScanJobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
 enum Sentiment {
   POSITIVE
   NEUTRAL
@@ -87,6 +93,7 @@ model Organization {
   memberships Membership[]
   businesses Business[]
   subscriptions Subscription[]
+  scanJobs ScanJob[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
@@ -136,6 +143,7 @@ model Business {
   visibilityScores VisibilityScore[]
   recommendations Recommendation[]
   alerts Alert[]
+  scanJobs ScanJob[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
@@ -184,6 +192,26 @@ model Scan {
   @@index([trackedQueryId, platformId])
   @@index([status])
   @@map("scans")
+}
+
+// Batch scan run (one rescan / onboard pass). Supports async queue + monthly metering.
+model ScanJob {
+  id String @id @default(cuid())
+  organizationId String
+  businessId String
+  status ScanJobStatus @default(QUEUED)
+  platformKeys Json?
+  error String?
+  result Json?
+  startedAt DateTime?
+  finishedAt DateTime?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([organizationId, status])
+  @@index([businessId, createdAt])
+  @@map("scan_jobs")
 }
 
 model ScanResult {

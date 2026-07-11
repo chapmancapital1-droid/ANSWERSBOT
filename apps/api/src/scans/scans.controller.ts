@@ -20,9 +20,16 @@ export class ScansController {
       trackedQueryId?: string;
       businessId?: string;
       platformKeys?: string[];
+      /** Force sync run (also enabled when SCAN_SYNC=true). */
+      sync?: boolean;
     },
   ) {
     return this.svc.trigger(u.organizationId, body);
+  }
+
+  @Get('jobs/:jobId')
+  getJob(@CurrentUser() u: AuthUser, @Param('jobId') jobId: string) {
+    return this.svc.getJob(u.organizationId, jobId);
   }
 
   /** businessId is org-scoped via OrgScopeGuard + service join. */

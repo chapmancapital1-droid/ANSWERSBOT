@@ -53,6 +53,33 @@ export default function PricingPage() {
       .catch(() => {});
   }, []);
 
+  async function openPortal() {
+    setLoading('portal');
+    setError(null);
+    try {
+      const t = token();
+      if (!t) {
+        router.push('/login');
+        return;
+      }
+      const res = await fetch(`${API}/billing/portal`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${t}`,
+        },
+        body: JSON.stringify({ returnUrl: `${window.location.origin}/pricing` }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Portal failed');
+      window.location.href = data.url;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Portal failed');
+    } finally {
+      setLoading(null);
+    }
+  }
+
   async function checkout(plan: 'STARTER' | 'PRO' | 'AGENCY') {
     setLoading(plan);
     setError(null);
@@ -120,10 +147,30 @@ export default function PricingPage() {
           Every plan starts with a 14-day trial. Cancel anytime. No credit card in local mock mode.
         </p>
         {status && (
-          <p className="mt-3 text-xs text-slate-500">
-            Current: {status.plan} · {status.paid ? 'paid/trial active' : 'free tier'} · Stripe{' '}
-            {status.stripeConfigured ? 'live' : 'mock'}
-          </p>
+          <div className="mt-3 space-y-1 text-xs text-slate-500">
+            <p>
+              Current: {status.plan} · {status.paid ? 'paid/trial active' : 'free tier'} · Stripe{' '}
+              {status.stripeConfigured ? 'live' : 'mock'}
+            </p>
+            {status.paid && status.usage && (
+              <p>
+                Usage this month: {status.usage.scanJobsThisMonth}
+                {status.usage.monthlyScanJobLimit != null
+                  ? ` / ${status.usage.monthlyScanJobLimit} scan jobs`
+                  : ' (unlimited)'}
+              </p>
+            )}
+            {status.paid && (
+              <button
+                type="button"
+                onClick={() => openPortal()}
+                disabled={loading === 'portal'}
+                className="mt-2 text-sm font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-60"
+              >
+                {loading === 'portal' ? 'Opening…' : 'Manage subscription →'}
+              </button>
+            )}
+          </div>
         )}
       </div>
 

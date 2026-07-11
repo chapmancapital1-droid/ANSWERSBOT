@@ -16,7 +16,17 @@
 | Client Bearer JWT from session cookie | Done |
 | Vitest unit tests + CI fails on red | Done |
 
-**Next:** P1 async scans + real Stripe portal — not new feature sprawl.
+**P1 (2026-07-11):** async ScanJob + poll, monthly plan metering, Stripe Billing Portal.
+
+| P1 item | Status |
+|---------|--------|
+| Async scan jobs (`ScanJob` + `GET /scans/jobs/:id`) | Done |
+| `SCAN_SYNC=true` for sync demos | Done |
+| Monthly scan-job quota (STARTER 100 / PRO 500 / AGENCY ∞) | Done |
+| Stripe Billing Portal `POST /billing/portal` | Done |
+| Rescan UI polls async jobs | Done |
+
+**Next (P2):** wire Celery dual-path scoring, AI Overview, trial emails, report PDFs.
 
 ---
 

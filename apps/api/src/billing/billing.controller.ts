@@ -55,6 +55,20 @@ export class BillingController {
     });
   }
 
+  /** Stripe Customer Portal — manage subscription, payment method, cancel */
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
+  @Post('billing/portal')
+  portal(
+    @CurrentUser() u: AuthUser,
+    @Body() body: { returnUrl?: string },
+  ) {
+    return this.billing.createPortal({
+      organizationId: u.organizationId,
+      returnUrl: body.returnUrl,
+    });
+  }
+
   /** Dev mock when Stripe keys are missing */
   @ApiBearerAuth()
   @UseGuards(AuthGuard('jwt'))

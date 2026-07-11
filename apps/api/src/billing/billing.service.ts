@@ -107,6 +107,42 @@ export class BillingService {
     return { mode: 'stripe' as const, url: session.url as string, plan, id: session.id };
   }
 
+  /** Stripe Customer Billing Portal (cancel / payment method / invoices). */
+  async createPortal(opts: { organizationId: string; returnUrl?: string }) {
+    const base =
+      process.env.WEB_ORIGIN?.split(',')[0] ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      'http://localhost:3001';
+    const returnUrl = opts.returnUrl || `${base}/pricing`;
+
+    if (!this.stripeConfigured()) {
+      this.log.warn('Stripe not configured — returning mock portal URL');
+      return {
+        mode: 'mock' as const,
+        url: `${base}/billing/success?portal=mock`,
+      };
+    }
+
+    const org = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: opts.organizationId },
+    });
+    if (!org.stripeCustomerId || org.stripeCustomerId === 'demo') {
+      throw new BadRequestException(
+        'No Stripe customer on this organization. Complete checkout first.',
+      );
+    }
+
+    const session = await this.stripePost('/v1/billing_portal/sessions', {
+      customer: org.stripeCustomerId,
+      return_url: returnUrl,
+    });
+
+    return {
+      mode: 'stripe' as const,
+      url: session.url as string,
+    };
+  }
+
   /** Local-only activation when Stripe keys are absent. */
   async mockActivate(organizationId: string, plan: PlanKey = 'STARTER') {
     // Fail closed: never allow mock paid access in production.

@@ -3,6 +3,8 @@ import {
   orgHasPaidAccess,
   freeTierBlocksBusinessCreate,
   freeTierBlocksRescan,
+  monthlyQuotaExceeded,
+  monthlyScanJobLimit,
 } from './entitlements.pure';
 
 describe('orgHasPaidAccess', () => {
@@ -49,5 +51,20 @@ describe('free tier gates', () => {
     expect(freeTierBlocksRescan(false, 1)).toBe(true);
     expect(freeTierBlocksRescan(false, 0)).toBe(false);
     expect(freeTierBlocksRescan(true, 10)).toBe(false);
+  });
+});
+
+describe('monthly scan job quota', () => {
+  it('sets plan limits', () => {
+    expect(monthlyScanJobLimit('STARTER')).toBe(100);
+    expect(monthlyScanJobLimit('PRO')).toBe(500);
+    expect(monthlyScanJobLimit('AGENCY')).toBeNull();
+    expect(monthlyScanJobLimit('STARTER', true)).toBeNull();
+  });
+
+  it('blocks when at or over limit', () => {
+    expect(monthlyQuotaExceeded(100, 100)).toBe(true);
+    expect(monthlyQuotaExceeded(99, 100)).toBe(false);
+    expect(monthlyQuotaExceeded(999, null)).toBe(false);
   });
 });
