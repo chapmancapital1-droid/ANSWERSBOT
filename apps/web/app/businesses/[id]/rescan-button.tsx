@@ -26,7 +26,14 @@ export function RescanButton({ businessId }: { businessId: string }) {
         body: JSON.stringify({ businessId }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || `Scan failed (${res.status})`);
+      if (!res.ok) {
+        if (data?.code === 'PAYWALL_RESCAN' || res.status === 403) {
+          setMsg(data.message || 'Upgrade required');
+          setTimeout(() => router.push('/pricing'), 800);
+          return;
+        }
+        throw new Error(data.message || data.error || `Scan failed (${res.status})`);
+      }
       setMsg(
         `Score ${data.score} · ${data.scansCompleted} scans` +
           (data.live ? ` · ${data.live} live` : '') +

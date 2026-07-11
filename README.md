@@ -101,6 +101,24 @@ docs/             Design PDFs + generated DESIGN_SPEC pointer
 | `npm run prisma:seed` | Seed platforms + demo org |
 | `docker compose up -d postgres redis` | Data plane only |
 
+## Billing (M6)
+
+| Tier | Limits |
+|------|--------|
+| **Free** | 1 business · 1 scan run (first insight) |
+| **Starter+** | Unlimited rescans · multi-business · 14-day trial |
+
+- `POST /api/v1/billing/checkout` → Stripe Checkout (or mock URL when keys missing)
+- `POST /api/v1/billing/mock-activate` → local trial without Stripe
+- `POST /api/v1/webhooks/stripe` → subscription lifecycle
+- Auth tokens: `demo` = unlimited demo org · `free` = paywalled free tier
+
+```powershell
+# After free scan is used, free-tier re-scan returns 403 PAYWALL_RESCAN
+# Activate trial (no Stripe keys):
+# POST /billing/mock-activate  { "plan": "STARTER" }
+```
+
 ## Live AI scans
 
 | Env | Effect |

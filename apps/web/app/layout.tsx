@@ -19,6 +19,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <a href="/onboard" className="hover:text-slate-900">
                 Free scan
               </a>
+              <a href="/pricing" className="hover:text-slate-900">
+                Pricing
+              </a>
               <a href="/login" className="hover:text-slate-900">
                 Login
               </a>

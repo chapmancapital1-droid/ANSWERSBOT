@@ -15,12 +15,64 @@ export class AuthService {
   ) {}
 
   async exchange(token: string) {
-    // Dev bootstrap: "demo" mints a JWT for the seeded demo org owner.
+    // Dev bootstrap: "demo" mints a JWT for the seeded demo org owner (unlimited).
     if (token === 'demo' || token === 'dev') {
       return this.mintDemoToken();
     }
+    // Free-tier org for paywall testing: token "free" or free:<email>
+    if (token === 'free' || token.startsWith('free:')) {
+      const email =
+        token === 'free'
+          ? `free_${Date.now()}@trial.answerspot.local`
+          : token.slice(5);
+      return this.mintFreeToken(email);
+    }
     // TODO(ADR-0001): verify IdP token (Auth.js/Clerk), upsert user, mint our JWT.
-    throw new UnauthorizedException('Unknown token. Use "demo" in development.');
+    throw new UnauthorizedException(
+      'Unknown token. Use "demo" (unlimited) or "free" (paywalled) in development.',
+    );
+  }
+
+  async mintFreeToken(email: string) {
+    const normalized = email.toLowerCase().trim();
+    let user = await this.prisma.user.findUnique({ where: { email: normalized } });
+    if (!user) {
+      const org = await this.prisma.organization.create({
+        data: {
+          name: `${normalized.split('@')[0]}'s Business`,
+          plan: 'STARTER',
+          status: 'TRIALING',
+          // no stripeCustomerId → free tier
+        },
+      });
+      user = await this.prisma.user.create({
+        data: {
+          organizationId: org.id,
+          email: normalized,
+          name: 'Free Trial User',
+          role: 'OWNER',
+          authProviderId: `free-${org.id}`,
+        },
+      });
+      await this.prisma.membership.create({
+        data: { userId: user.id, organizationId: org.id, role: 'OWNER' },
+      });
+    }
+    const accessToken = await this.jwt.signAsync({
+      sub: user.id,
+      organizationId: user.organizationId,
+      role: user.role,
+      email: user.email,
+    });
+    return {
+      accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        organizationId: user.organizationId,
+        tier: 'free',
+      },
+    };
   }
 
   async mintDemoToken() {
@@ -69,7 +121,16 @@ export class AuthService {
     return { accessToken, user: { id: user.id, email: user.email, organizationId: user.organizationId } };
   }
 
-  me(user: AuthUser) {
-    return this.prisma.user.findUnique({ where: { id: user.id } });
+  async me(user: AuthUser) {
+    const row = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      include: {
+        organization: {
+          select: { id: true, name: true, plan: true, status: true },
+        },
+      },
+    });
+    return row;
   }
 }
+

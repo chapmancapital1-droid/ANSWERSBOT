@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ScansService } from './scans.service';
+import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('scans')
 @ApiBearerAuth()
@@ -12,6 +13,7 @@ export class ScansController {
 
   @Post('trigger')
   trigger(
+    @CurrentUser() u: AuthUser,
     @Body()
     body: {
       trackedQueryId?: string;
@@ -19,7 +21,7 @@ export class ScansController {
       platformKeys?: string[];
     },
   ) {
-    return this.svc.trigger(body);
+    return this.svc.trigger(u.organizationId, body);
   }
 
   @Get('business/:businessId')

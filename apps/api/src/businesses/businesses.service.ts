@@ -4,15 +4,18 @@ import { CreateBusinessDto } from './dto/create-business.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { generateQueries } from '../scans/query-generator';
 import { ScanPipelineService } from '../scans/scan-pipeline.service';
+import { EntitlementsService } from '../billing/entitlements.service';
 
 @Injectable()
 export class BusinessesService {
   constructor(
     private prisma: PrismaService,
     private scans: ScanPipelineService,
+    private entitlements: EntitlementsService,
   ) {}
 
   async create(organizationId: string, dto: CreateBusinessDto) {
+    await this.entitlements.assertCanCreateBusiness(organizationId);
     const business = await this.prisma.business.create({
       data: { ...dto, organizationId },
     });
@@ -26,6 +29,8 @@ export class BusinessesService {
     organizationId: string,
     dto: CreateBusinessDto & { runScan?: boolean },
   ) {
+    await this.entitlements.assertCanCreateBusiness(organizationId);
+
     const business = await this.prisma.business.create({
       data: {
         name: dto.name,
@@ -61,6 +66,8 @@ export class BusinessesService {
     let scan: Awaited<ReturnType<ScanPipelineService['runForBusiness']>> | null =
       null;
     if (dto.runScan !== false) {
+      // First scan is free (no prior DONE scans on this business)
+      await this.entitlements.assertCanScan(organizationId, business.id);
       scan = await this.scans.runForBusiness(business.id);
     }
 
@@ -68,6 +75,7 @@ export class BusinessesService {
       business,
       queries,
       scan,
+      billing: await this.entitlements.status(organizationId),
     };
   }
 

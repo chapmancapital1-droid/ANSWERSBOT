@@ -26,8 +26,8 @@ export type SimulatedAnswer = {
   rankPosition: number | null;
   sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'UNKNOWN';
   confidence: number;
-  citations: { url: string; title: string }[];
-  competitors: { name: string; rank_position: number }[];
+  citations: { url: string; title?: string }[];
+  competitors: { name: string; rank_position?: number }[];
 };
 
 export function simulateAnswer(opts: {

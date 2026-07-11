@@ -1,32 +1,45 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScanPipelineService } from './scan-pipeline.service';
+import { EntitlementsService } from '../billing/entitlements.service';
 
 @Injectable()
 export class ScansService {
   constructor(
     private prisma: PrismaService,
     private pipeline: ScanPipelineService,
+    private entitlements: EntitlementsService,
   ) {}
 
-  async trigger(body: {
-    trackedQueryId?: string;
-    businessId?: string;
-    platformKeys?: string[];
-  }) {
-    if (body.businessId) {
-      return this.pipeline.runForBusiness(body.businessId, {
-        platformKeys: body.platformKeys,
+  async trigger(
+    organizationId: string,
+    body: {
+      trackedQueryId?: string;
+      businessId?: string;
+      platformKeys?: string[];
+    },
+  ) {
+    let businessId = body.businessId;
+    if (!businessId && body.trackedQueryId) {
+      const q = await this.prisma.trackedQuery.findUnique({
+        where: { id: body.trackedQueryId },
       });
+      if (!q) throw new NotFoundException('Query not found');
+      businessId = q.businessId;
     }
-    if (!body.trackedQueryId) {
+    if (!businessId) {
       return { error: 'trackedQueryId or businessId required' };
     }
-    const q = await this.prisma.trackedQuery.findUnique({
-      where: { id: body.trackedQueryId },
+
+    // Tenant check
+    const biz = await this.prisma.business.findFirst({
+      where: { id: businessId, organizationId, deletedAt: null },
     });
-    if (!q) throw new NotFoundException('Query not found');
-    return this.pipeline.runForBusiness(q.businessId, {
+    if (!biz) throw new NotFoundException('Business not found');
+
+    await this.entitlements.assertCanScan(organizationId, businessId);
+
+    return this.pipeline.runForBusiness(businessId, {
       platformKeys: body.platformKeys,
     });
   }
