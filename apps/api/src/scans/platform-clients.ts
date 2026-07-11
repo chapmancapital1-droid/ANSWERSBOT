@@ -17,12 +17,20 @@ export function scanMode(): 'stub' | 'live' | 'auto' {
   return 'auto';
 }
 
+export function aiOverviewEnabled() {
+  return (
+    process.env.ENABLE_AI_OVERVIEW === 'true' && hasKey('SERP_API_KEY')
+  );
+}
+
 export function platformCapabilities() {
   return {
     mode: scanMode(),
     perplexity: hasKey('PERPLEXITY_API_KEY'),
     openai: hasKey('OPENAI_API_KEY'),
     gemini: hasKey('GEMINI_API_KEY'),
+    aiOverview: aiOverviewEnabled(),
+    serp: hasKey('SERP_API_KEY'),
   };
 }
 
@@ -97,6 +105,48 @@ async function callOpenAI(queryText: string, location?: string | null): Promise<
   }
   const data = await res.json();
   return data.choices?.[0]?.message?.content || '';
+}
+
+async function callSerpAiOverview(
+  queryText: string,
+  location?: string | null,
+): Promise<{ text: string; citations: { url: string; title?: string }[] }> {
+  const key = process.env.SERP_API_KEY!;
+  const q = location ? `${queryText} ${location}` : queryText;
+  const url = new URL('https://serpapi.com/search.json');
+  url.searchParams.set('engine', 'google');
+  url.searchParams.set('q', q);
+  url.searchParams.set('api_key', key);
+  url.searchParams.set('hl', 'en');
+  url.searchParams.set('gl', 'us');
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`SerpAPI HTTP ${res.status}: ${body.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const lines: string[] = [];
+  const citations: { url: string; title?: string }[] = [];
+  const ai = data.ai_overview || data.answer_box || {};
+  if (ai.title) lines.push(String(ai.title));
+  if (ai.snippet) lines.push(String(ai.snippet));
+  for (const block of ai.text_blocks || []) {
+    if (block?.snippet) lines.push(String(block.snippet));
+    if (Array.isArray(block?.list)) {
+      block.list.forEach((item: any, i: number) => {
+        const snip = item?.snippet || item?.title || String(item);
+        lines.push(`${i + 1}. ${snip}`);
+      });
+    }
+  }
+  for (const row of (data.organic_results || []).slice(0, 5)) {
+    lines.push(`${lines.filter((l) => /^\d+\./.test(l)).length + 1}. ${row.title || 'Result'} — ${row.snippet || ''}`);
+    if (row.link) citations.push({ url: row.link, title: row.title });
+  }
+  return {
+    text: lines.join('\n') || `No AI Overview for: ${q}`,
+    citations,
+  };
 }
 
 async function callGemini(queryText: string, location?: string | null): Promise<string> {
@@ -180,6 +230,14 @@ export async function fetchPlatformAnswer(opts: {
       const text = await callGemini(opts.queryText, opts.location);
       log.log(`live GEMINI ok query="${opts.queryText.slice(0, 40)}"`);
       return toAnswer(text, 'GEMINI', [], 'live');
+    }
+    if (wantLive && opts.platformKey === 'AI_OVERVIEW' && caps.aiOverview) {
+      const { text, citations } = await callSerpAiOverview(
+        opts.queryText,
+        opts.location,
+      );
+      log.log(`live AI_OVERVIEW ok query="${opts.queryText.slice(0, 40)}"`);
+      return toAnswer(text, 'AI_OVERVIEW', citations, 'live');
     }
   } catch (err: any) {
     log.warn(

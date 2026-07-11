@@ -26,7 +26,17 @@
 | Stripe Billing Portal `POST /billing/portal` | Done |
 | Rescan UI polls async jobs | Done |
 
-**Next (P2):** wire Celery dual-path scoring, AI Overview, trial emails, report PDFs.
+**P2 (2026-07-11):**
+
+| Item | Status |
+|------|--------|
+| Celery dual-path (`SCAN_WORKER=celery` + `run_scan_job`) | Done |
+| Nest fallback worker when broker down | Done |
+| AI Overview via SerpAPI (`ENABLE_AI_OVERVIEW`) | Done |
+| Stripe `trial_will_end` email | Done |
+| PDF/HTML reports + MinIO/local storage | Done |
+
+**Next (P3):** production IdP (Clerk), agency multi-seat, structured logging/Sentry, SERP budget caps.
 
 ---
 

@@ -7,6 +7,7 @@ import {
 import { createHmac, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EntitlementsService } from './entitlements.service';
+import { sendAlertEmail } from '../alerts/mailer';
 
 type PlanKey = 'STARTER' | 'PRO' | 'AGENCY';
 
@@ -238,10 +239,82 @@ export class BillingService {
         }
         break;
       }
+      case 'customer.subscription.trial_will_end': {
+        const sub = event.data.object;
+        const orgId = sub.metadata?.organizationId as string | undefined;
+        if (orgId) {
+          await this.notifyTrialEnding(orgId, sub);
+        }
+        break;
+      }
       default:
         break;
     }
     return { received: true };
+  }
+
+  /** Stripe fires ~3 days before trial ends. */
+  private async notifyTrialEnding(organizationId: string, sub: any) {
+    const users = await this.prisma.user.findMany({
+      where: { organizationId, role: { in: ['OWNER', 'ADMIN'] } },
+      select: { email: true, name: true },
+    });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true, plan: true },
+    });
+    const trialEnd = sub.trial_end
+      ? new Date(sub.trial_end * 1000).toISOString().slice(0, 10)
+      : 'soon';
+    const base =
+      process.env.WEB_ORIGIN?.split(',')[0] ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      'http://localhost:3001';
+    const recipients = users.map((u) => u.email).filter(Boolean);
+    if (!recipients.length) {
+      this.log.warn(`trial_will_end: no recipients for org ${organizationId}`);
+      return;
+    }
+    const subject = `Your Answerspot trial ends ${trialEnd}`;
+    const text = [
+      `Hi${users[0]?.name ? ` ${users[0].name}` : ''},`,
+      ``,
+      `Your ${org?.plan || 'Answerspot'} trial for ${org?.name || 'your workspace'} ends on ${trialEnd}.`,
+      ``,
+      `Add a payment method or upgrade to keep scans, scores, and competitor tracking:`,
+      `${base}/pricing`,
+      ``,
+      `Manage billing anytime: ${base}/pricing (Manage subscription)`,
+      ``,
+      `— Answerspot`,
+    ].join('\n');
+
+    const result = await sendAlertEmail({ to: recipients, subject, text });
+    this.log.log(
+      `trial_will_end email org=${organizationId} mode=${result.mode} ok=${result.ok}`,
+    );
+
+    // Best-effort audit row on first business if present
+    const biz = await this.prisma.business.findFirst({
+      where: { organizationId, deletedAt: null },
+      select: { id: true },
+    });
+    if (biz) {
+      await this.prisma.alert.create({
+        data: {
+          businessId: biz.id,
+          type: 'TRIAL_WILL_END',
+          channel: 'EMAIL',
+          payload: {
+            kind: 'TRIAL_WILL_END',
+            trialEnd,
+            emailOk: result.ok,
+            mode: result.mode,
+          },
+          sentAt: result.ok ? new Date() : null,
+        },
+      });
+    }
   }
 
   private async applySubscription(

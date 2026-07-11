@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScanPipelineService } from './scan-pipeline.service';
 import { EntitlementsService } from '../billing/entitlements.service';
+import { celeryEnabled, enqueueScanJob } from './celery-enqueue';
 
 @Injectable()
 export class ScansService {
@@ -70,8 +71,24 @@ export class ScansService {
       return this.executeJob(job.id, businessId, body.platformKeys);
     }
 
-    // Fire-and-forget in-process worker (no Celery required for Nest path).
-    // Celery workers remain available for future dual-path production scoring.
+    // Dual-path: prefer Celery when SCAN_WORKER=celery + Redis available.
+    if (celeryEnabled()) {
+      const taskId = await enqueueScanJob(job.id);
+      if (taskId) {
+        return {
+          mode: 'async' as const,
+          worker: 'celery' as const,
+          jobId: job.id,
+          celeryTaskId: taskId,
+          status: 'QUEUED' as const,
+          businessId,
+          pollUrl: `/scans/jobs/${job.id}`,
+        };
+      }
+      this.log.warn('Celery enqueue failed — falling back to Nest inline worker');
+    }
+
+    // In-process Nest worker (default when Celery off or broker down).
     setImmediate(() => {
       this.executeJob(job.id, businessId!, body.platformKeys).catch((err) => {
         this.log.error(`async scan job ${job.id} failed: ${err?.message || err}`);
@@ -80,6 +97,7 @@ export class ScansService {
 
     return {
       mode: 'async' as const,
+      worker: 'nest' as const,
       jobId: job.id,
       status: 'QUEUED' as const,
       businessId,

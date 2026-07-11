@@ -4,6 +4,7 @@ from ..adapters.registry import get_adapter
 from ..config import settings
 from ..db import session_scope
 from .parser import parse_scan
+from .job_runner import execute_scan_job, fail_scan_job
 
 log = get_task_logger(__name__)
 
@@ -21,3 +22,25 @@ def run_scan(self, scan_id: str, platform_key: str, query_text: str, location: s
         _ = db
     parse_scan.delay(scan_id=scan_id)
     return {"scan_id": scan_id, "samples": len(answers)}
+
+
+@shared_task(
+    name="answerspot_workers.tasks.runner.run_scan_job",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=20,
+    acks_late=True,
+)
+def run_scan_job(self, job_id: str):
+    """Full batch ScanJob from Nest API (dual-path worker)."""
+    try:
+        result = execute_scan_job(job_id)
+        log.info("scan job done id=%s score=%s", job_id, result.get("score"))
+        return result
+    except Exception as exc:
+        log.exception("scan job failed id=%s", job_id)
+        try:
+            fail_scan_job(job_id, str(exc))
+        except Exception:  # noqa: BLE001
+            log.exception("failed to mark job FAILED id=%s", job_id)
+        raise self.retry(exc=exc)

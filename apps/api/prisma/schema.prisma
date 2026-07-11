@@ -70,6 +70,7 @@ enum AlertType {
   COMPETITOR_OVERTAKE
   SENTIMENT_NEGATIVE
   SCAN_FAILED
+  TRIAL_WILL_END
 }
 enum AlertChannel {
   EMAIL
@@ -144,6 +145,7 @@ model Business {
   recommendations Recommendation[]
   alerts Alert[]
   scanJobs ScanJob[]
+  reports Report[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
@@ -283,4 +285,18 @@ model Subscription {
   updatedAt DateTime @updatedAt
   @@index([organizationId])
   @@map("subscriptions")
+}
+
+model Report {
+  id String @id @default(cuid())
+  businessId String
+  format String @default("pdf")
+  title String
+  storageKey String
+  url String?
+  sizeBytes Int?
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@index([businessId, createdAt])
+  @@map("reports")
 }

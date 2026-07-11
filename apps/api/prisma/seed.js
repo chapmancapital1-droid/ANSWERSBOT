@@ -6,7 +6,12 @@ async function main() {
     { key: 'CHATGPT', displayName: 'ChatGPT' },
     { key: 'PERPLEXITY', displayName: 'Perplexity' },
     { key: 'GEMINI', displayName: 'Gemini' },
-    { key: 'AI_OVERVIEW', displayName: 'Google AI Overview', enabled: false },
+    {
+      key: 'AI_OVERVIEW',
+      displayName: 'Google AI Overview',
+      // Enabled in DB; API still gates on ENABLE_AI_OVERVIEW + SERP_API_KEY
+      enabled: true,
+    },
   ];
   for (const p of platforms) {
     await prisma.platform.upsert({

@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { generateRecommendations } from './recommendations-engine';
 import type { BusinessSignals, QuerySignal } from './scoring';
 import {
+  aiOverviewEnabled,
   fetchPlatformAnswer,
   platformCapabilities,
 } from './platform-clients';
@@ -31,11 +32,15 @@ export class ScanPipelineService {
       return { businessId, scans: 0, message: 'No active queries' };
     }
 
+    const includeAiOverview = aiOverviewEnabled();
     const platforms = await this.prisma.platform.findMany({
       where: {
         enabled: true,
         AND: [
-          { key: { not: 'AI_OVERVIEW' } },
+          // AI Overview only when SERP key + ENABLE_AI_OVERVIEW=true
+          ...(includeAiOverview
+            ? []
+            : [{ key: { not: 'AI_OVERVIEW' as const } }]),
           ...(opts?.platformKeys?.length
             ? [{ key: { in: opts.platformKeys as any } }]
             : []),
