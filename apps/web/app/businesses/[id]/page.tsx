@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { RecommendationList, type Recommendation } from './recommendation-list';
+import { RescanButton } from './rescan-button';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
@@ -112,13 +113,14 @@ export default async function BusinessHomePage({ params }: { params: { id: strin
             {business.category} · {business.city}, {business.state}
           </p>
         </div>
-        <div className="flex gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
           <Link href={`/businesses/${id}/answers`} className="font-semibold text-brand-600">
             Answer Explorer
           </Link>
           <Link href={`/businesses/${id}/competitors`} className="font-semibold text-brand-600">
             Competitor Radar
           </Link>
+          <RescanButton businessId={id} />
         </div>
       </div>
 

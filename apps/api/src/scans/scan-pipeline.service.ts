@@ -1,13 +1,15 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { simulateAnswer } from './answer-simulator';
 import { generateRecommendations } from './recommendations-engine';
 import type { BusinessSignals, QuerySignal } from './scoring';
+import {
+  fetchPlatformAnswer,
+  platformCapabilities,
+} from './platform-clients';
 
 /**
  * M2 in-process scan pipeline (no Celery required for local MVP).
- * Uses deterministic stub answers when PERPLEXITY_API_KEY is unset.
- * Production workers can replace this with Celery enqueue later.
+ * Live Perplexity/OpenAI/Gemini when keys present; deterministic stub otherwise.
  */
 @Injectable()
 export class ScanPipelineService {
@@ -37,7 +39,14 @@ export class ScanPipelineService {
       },
     });
 
+    const caps = platformCapabilities();
     let created = 0;
+    let live = 0;
+    let stub = 0;
+
+    // Optional throttle for live APIs (ms between calls)
+    const delayMs = Number(process.env.SCAN_LIVE_DELAY_MS || 400);
+
     for (const q of business.trackedQueries) {
       for (const platform of platforms) {
         const scan = await this.prisma.scan.create({
@@ -50,13 +59,17 @@ export class ScanPipelineService {
           },
         });
         try {
-          const answer = simulateAnswer({
+          const answer = await fetchPlatformAnswer({
             platformKey: platform.key,
             queryText: q.queryText,
             businessName: business.name,
             category: business.category,
             city: business.city,
+            location: q.location,
           });
+
+          if (answer.source === 'live') live++;
+          else stub++;
 
           await this.prisma.scanResult.create({
             data: {
@@ -75,6 +88,10 @@ export class ScanPipelineService {
             data: { status: 'DONE' },
           });
           created++;
+
+          if (answer.source === 'live' && delayMs > 0) {
+            await new Promise((r) => setTimeout(r, delayMs));
+          }
         } catch (err: any) {
           this.log.error(`scan failed ${scan.id}: ${err?.message}`);
           await this.prisma.scan.update({
@@ -89,6 +106,9 @@ export class ScanPipelineService {
     return {
       businessId,
       scansCompleted: created,
+      live,
+      stub,
+      capabilities: caps,
       platforms: platforms.map((p) => p.key),
       queries: business.trackedQueries.length,
       score: insights.score,

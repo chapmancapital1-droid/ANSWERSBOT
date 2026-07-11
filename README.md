@@ -101,10 +101,28 @@ docs/             Design PDFs + generated DESIGN_SPEC pointer
 | `npm run prisma:seed` | Seed platforms + demo org |
 | `docker compose up -d postgres redis` | Data plane only |
 
+## Live AI scans
+
+| Env | Effect |
+|-----|--------|
+| `SCAN_MODE=auto` (default) | Live when keys present; stub otherwise |
+| `PERPLEXITY_API_KEY` | Real Perplexity Sonar answers for PERPLEXITY platform |
+| `OPENAI_API_KEY` | Real ChatGPT-path answers for CHATGPT platform |
+| `GEMINI_API_KEY` | Real Gemini answers for GEMINI platform |
+
+Without keys the product still demos end-to-end via the deterministic stub.
+
+```powershell
+# .env
+PERPLEXITY_API_KEY=pplx-your-key
+SCAN_MODE=auto
+```
+
+Then **Re-run scan** on a business dashboard, or re-onboard.
+
 ## Status (2026-07-11 DevOps build)
 
-- Monorepo unpacked from design manifest + completed packages
-- JWT demo auth for local development
-- Web: home, login, business list, visibility dashboard + recs island
-- Seed includes demo score + recommendations so UI is not empty
-- Workers recommendation engine present with unit-testable scoring/rules
+- Monorepo + M1/M2 core loop (onboard → scan → score → recs)
+- Live Perplexity/OpenAI/Gemini adapters with stub fallback
+- Answer Explorer + Competitor Radar + Re-run scan
+- JWT demo auth; seed for empty-state demos
