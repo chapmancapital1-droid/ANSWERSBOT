@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ScansService } from './scans.service';
 import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
+import { OrgScopeGuard } from '../common/guards/org-scope.guard';
 
 @ApiTags('scans')
 @ApiBearerAuth()
@@ -24,13 +25,18 @@ export class ScansController {
     return this.svc.trigger(u.organizationId, body);
   }
 
+  /** businessId is org-scoped via OrgScopeGuard + service join. */
+  @UseGuards(OrgScopeGuard)
   @Get('business/:businessId')
-  listForBusiness(@Param('businessId') businessId: string) {
-    return this.svc.listForBusiness(businessId);
+  listForBusiness(
+    @CurrentUser() u: AuthUser,
+    @Param('businessId') businessId: string,
+  ) {
+    return this.svc.listForBusiness(u.organizationId, businessId);
   }
 
   @Get(':id')
-  get(@Param('id') id: string) {
-    return this.svc.get(id);
+  get(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.get(u.organizationId, id);
   }
 }

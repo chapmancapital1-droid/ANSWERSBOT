@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import { AlertsPanel } from '@/components/alerts-panel';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
@@ -67,6 +68,16 @@ export default async function DashboardPage() {
           </li>
         ))}
       </ul>
+
+      <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+        <h2 className="font-semibold text-slate-900">Recent alerts</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Score drops, negative sentiment, and competitor overtakes.
+        </p>
+        <div className="mt-4">
+          <AlertsPanel />
+        </div>
+      </section>
     </div>
   );
 }

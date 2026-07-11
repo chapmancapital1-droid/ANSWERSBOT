@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import { parseAnswer } from './answer-parser';
 
 describe('parseAnswer', () => {

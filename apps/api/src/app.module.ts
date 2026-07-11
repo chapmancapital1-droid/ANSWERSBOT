@@ -8,11 +8,22 @@ import { QueriesModule } from './queries/queries.module';
 import { ScansModule } from './scans/scans.module';
 import { ReportsModule } from './reports/reports.module';
 import { BillingModule } from './billing/billing.module';
+import { AlertsModule } from './alerts/alerts.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), HealthModule, AuthModule,
-    BusinessesModule, QueriesModule, ScansModule, ReportsModule, BillingModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    HealthModule,
+    AuthModule,
+    BusinessesModule,
+    QueriesModule,
+    ScansModule,
+    ReportsModule,
+    BillingModule,
+    AlertsModule,
+  ],
   providers: [PrismaService],
   exports: [PrismaService],
 })
 export class AppModule {}
+

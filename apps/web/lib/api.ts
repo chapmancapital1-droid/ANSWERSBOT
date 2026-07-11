@@ -11,13 +11,25 @@ export class ApiError extends Error {
   }
 }
 
+function readSessionCookieBrowser(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const match = document.cookie
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith("session="));
+  if (!match) return undefined;
+  return decodeURIComponent(match.slice("session=".length));
+}
+
 async function authHeaders(): Promise<Record<string, string>> {
   if (typeof window === "undefined") {
     const { cookies } = await import("next/headers");
     const token = cookies().get("session")?.value;
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
-  return {};
+  // Client components: cookie is not auto-attached as Bearer (API is JWT strategy).
+  const token = readSessionCookieBrowser();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 interface RequestOpts {

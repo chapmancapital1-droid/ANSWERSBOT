@@ -101,6 +101,23 @@ docs/             Design PDFs + generated DESIGN_SPEC pointer
 | `npm run prisma:seed` | Seed platforms + demo org |
 | `docker compose up -d postgres redis` | Data plane only |
 
+## Alerts
+
+After each scan, Answerspot evaluates:
+
+| Type | Trigger |
+|------|---------|
+| `SCORE_DROP` | Score falls by ≥ `SCORE_DROP_THRESHOLD` (default 5) |
+| `SENTIMENT_NEGATIVE` | Negative AI descriptions in last 2h (max 1/day) |
+| `COMPETITOR_OVERTAKE` | Open HIGH/CRITICAL competitor rec (max 1/day) |
+
+Delivery: **Resend** when `RESEND_API_KEY` is set; otherwise **console stub** (still stored in DB).
+
+```
+GET /api/v1/alerts
+GET /api/v1/alerts/business/:businessId
+```
+
 ## Billing (M6)
 
 | Tier | Limits |

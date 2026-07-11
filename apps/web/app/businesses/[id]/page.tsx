@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { RecommendationList, type Recommendation } from './recommendation-list';
 import { RescanButton } from './rescan-button';
+import { AlertsPanel } from '@/components/alerts-panel';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
@@ -165,6 +166,16 @@ export default async function BusinessHomePage({ params }: { params: { id: strin
         <p className="mt-1 text-sm text-slate-500">Ranked by impact. Expand for copyable fixes.</p>
         <div className="mt-4">
           <RecommendationList items={recs} />
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+        <h2 className="font-semibold text-slate-900">Alerts</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Email notifications fire on score drops (default ≥5 pts), negative sentiment, and competitor overtakes.
+        </p>
+        <div className="mt-4">
+          <AlertsPanel businessId={id} />
         </div>
       </section>
     </div>

@@ -6,6 +6,7 @@ import {
   fetchPlatformAnswer,
   platformCapabilities,
 } from './platform-clients';
+import { AlertsService } from '../alerts/alerts.service';
 
 /**
  * M2 in-process scan pipeline (no Celery required for local MVP).
@@ -15,7 +16,10 @@ import {
 export class ScanPipelineService {
   private readonly log = new Logger(ScanPipelineService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private alerts: AlertsService,
+  ) {}
 
   async runForBusiness(businessId: string, opts?: { platformKeys?: string[] }) {
     const business = await this.prisma.business.findUnique({
@@ -103,6 +107,15 @@ export class ScanPipelineService {
     }
 
     const insights = await this.recomputeInsights(businessId);
+    let alertResult: { alerts: number; types?: string[] } = { alerts: 0 };
+    try {
+      alertResult = await this.alerts.evaluateAfterScan(
+        businessId,
+        insights.score,
+      );
+    } catch (err: any) {
+      this.log.warn(`alert evaluation failed: ${err?.message || err}`);
+    }
     return {
       businessId,
       scansCompleted: created,
@@ -113,6 +126,7 @@ export class ScanPipelineService {
       queries: business.trackedQueries.length,
       score: insights.score,
       recommendations: insights.recommendationCount,
+      alerts: alertResult,
     };
   }
 

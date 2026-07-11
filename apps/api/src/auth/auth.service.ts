@@ -14,7 +14,27 @@ export class AuthService {
     private jwt: JwtService,
   ) {}
 
+  private devAuthAllowed(): boolean {
+    if (process.env.NODE_ENV === 'production') {
+      return process.env.ALLOW_DEV_AUTH === 'true';
+    }
+    // Non-production: allowed unless explicitly disabled
+    return process.env.ALLOW_DEV_AUTH !== 'false';
+  }
+
   async exchange(token: string) {
+    const isDevToken =
+      token === 'demo' ||
+      token === 'dev' ||
+      token === 'free' ||
+      token.startsWith('free:');
+
+    if (isDevToken && !this.devAuthAllowed()) {
+      throw new UnauthorizedException(
+        'Dev auth tokens are disabled. Set ALLOW_DEV_AUTH=true only for controlled environments.',
+      );
+    }
+
     // Dev bootstrap: "demo" mints a JWT for the seeded demo org owner (unlimited).
     if (token === 'demo' || token === 'dev') {
       return this.mintDemoToken();

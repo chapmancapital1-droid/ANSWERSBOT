@@ -109,8 +109,15 @@ export class BillingService {
 
   /** Local-only activation when Stripe keys are absent. */
   async mockActivate(organizationId: string, plan: PlanKey = 'STARTER') {
-    if (process.env.NODE_ENV === 'production' && this.stripeConfigured()) {
-      throw new BadRequestException('Mock activate disabled in production');
+    // Fail closed: never allow mock paid access in production.
+    // Outside production, require ALLOW_MOCK_BILLING=true (default true in non-prod for DX).
+    if (process.env.NODE_ENV === 'production') {
+      throw new BadRequestException('Mock activate is disabled in production');
+    }
+    if (process.env.ALLOW_MOCK_BILLING === 'false') {
+      throw new BadRequestException(
+        'Mock activate disabled. Set ALLOW_MOCK_BILLING=true for local billing tests.',
+      );
     }
     const fakeSubId = `sub_mock_${organizationId.slice(0, 8)}_${Date.now()}`;
     await this.prisma.organization.update({
@@ -133,19 +140,31 @@ export class BillingService {
 
   async handleWebhook(rawBody: Buffer, sig: string | undefined) {
     if (!this.stripeConfigured()) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new BadRequestException('Stripe is not configured');
+      }
       this.log.warn('Webhook ignored — Stripe not configured');
       return { received: true, ignored: true };
     }
 
     const secret = process.env.STRIPE_WEBHOOK_SECRET;
-    if (secret && !secret.includes('...')) {
-      this.verifyStripeSignature(rawBody, sig || '', secret);
+    const secretOk = Boolean(secret && !secret.includes('...'));
+    if (process.env.NODE_ENV === 'production' && !secretOk) {
+      throw new BadRequestException(
+        'STRIPE_WEBHOOK_SECRET is required in production',
+      );
+    }
+    if (secretOk) {
+      this.verifyStripeSignature(rawBody, sig || '', secret!);
     } else {
-      this.log.warn('STRIPE_WEBHOOK_SECRET unset — accepting unsigned webhook (dev only)');
+      this.log.warn(
+        'STRIPE_WEBHOOK_SECRET unset — accepting unsigned webhook (dev only)',
+      );
     }
 
     const event = JSON.parse(rawBody.toString('utf8'));
-    this.log.log(`Stripe event ${event.type}`);
+    // Avoid logging full payloads (may contain email / customer PII)
+    this.log.log(`Stripe event ${event.type} id=${event.id ?? 'unknown'}`);
 
     switch (event.type) {
       case 'checkout.session.completed': {

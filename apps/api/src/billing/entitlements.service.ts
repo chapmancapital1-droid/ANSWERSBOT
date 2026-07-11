@@ -1,8 +1,13 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  FREE_BUSINESS_LIMIT,
+  freeTierBlocksBusinessCreate,
+  freeTierBlocksRescan,
+  orgHasPaidAccess,
+} from './entitlements.pure';
 
-/** Free tier: 1 business, 1 completed scan batch per business. */
-export const FREE_BUSINESS_LIMIT = 1;
+export { FREE_BUSINESS_LIMIT };
 
 @Injectable()
 export class EntitlementsService {
@@ -20,20 +25,13 @@ export class EntitlementsService {
 
   async hasPaidAccess(organizationId: string): Promise<boolean> {
     const org = await this.getOrg(organizationId);
-
-    // Seeded demo org — unlimited for product demos
-    if (org.stripeCustomerId === 'demo') return true;
-
-    const paidSub = org.subscriptions.find((s) =>
-      ['ACTIVE', 'TRIALING'].includes(s.status),
-    );
-    return Boolean(paidSub);
+    return orgHasPaidAccess(org);
   }
 
   async assertCanCreateBusiness(organizationId: string) {
-    if (await this.hasPaidAccess(organizationId)) return;
     const org = await this.getOrg(organizationId);
-    if (org._count.businesses >= FREE_BUSINESS_LIMIT) {
+    const paid = orgHasPaidAccess(org);
+    if (freeTierBlocksBusinessCreate(paid, org._count.businesses)) {
       throw new ForbiddenException({
         code: 'PAYWALL_BUSINESS_LIMIT',
         message:
@@ -52,7 +50,7 @@ export class EntitlementsService {
         trackedQuery: { businessId },
       },
     });
-    if (prior > 0) {
+    if (freeTierBlocksRescan(false, prior)) {
       throw new ForbiddenException({
         code: 'PAYWALL_RESCAN',
         message:
